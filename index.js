@@ -4,6 +4,34 @@ const importCwd = require('import-cwd');
 const walkSync = require('walk-sync');
 const semver = require('semver');
 
+const fileGlobs = [
+  '*/app/**/*.js',
+  '*/addon/**/*.js',
+  '*/tests/**/*.js',
+  '*/app/**/*.ts',
+  '*/addon/**/*.ts',
+  '*/tests/**/*.ts',
+];
+
+function getIgnoreFile() {
+  let ignoreFile = ['**/node_modules/*'];
+
+  try {
+    ignoreFile = readFileSync(join(cwd, '.eslintignore'), 'utf8')
+      .split('\n')
+      .filter((line) => line.length)
+      .filter((line) => !line.startsWith('#'))
+      // walkSync can't handle these
+      .filter((line) => !line.startsWith('!'))
+      .map((line) => line.replace(/^\//, ''))
+      .map((line) => line.replace(/\/$/, '/*'));
+  } catch (e) {
+    // noop
+  }
+
+  return ignoreFile;
+}
+
 function ignoreError(error) {
   const ruleIds = error.messages.map((message) => message.ruleId);
   let uniqueIds = [...new Set(ruleIds)];
@@ -44,9 +72,11 @@ async function ignoreAll(cwd = process.cwd()) {
     // this won't use the version in the repo but it will still use v8 because
     // that is installed in this repo
     const { ESLint } = eslint;
-    cli = new ESLint();
-    results = await cli.lintFiles([cwd]);
-
+    cli = new ESLint({
+      cwd,
+      errorOnUnmatchedPattern: false,
+    });
+    results = await cli.lintFiles(fileGlobs);
     // remove warnings
     results = ESLint.getErrorResults(results);
   } else {
@@ -65,20 +95,7 @@ async function ignoreAll(cwd = process.cwd()) {
 }
 
 function list(cwd = process.cwd()) {
-  let ignoreFile;
-
-  try {
-    ignoreFile = readFileSync(join(cwd, '.gitignore'), 'utf8')
-      .split('\n')
-      .filter((line) => line.length)
-      .filter((line) => !line.startsWith('#'))
-      // walkSync can't handle these
-      .filter((line) => !line.startsWith('!'))
-      .map((line) => line.replace(/^\//, ''))
-      .map((line) => line.replace(/\/$/, '/*'));
-  } catch (e) {
-    // noop
-  }
+  const ignoreFile = getIgnoreFile();
 
   const files = walkSync(cwd, {
     globs: ['**/*.js', '**/*.ts'],
